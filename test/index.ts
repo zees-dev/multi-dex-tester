@@ -99,7 +99,7 @@ describe("Uniswap v2", function () {
     );
   });
 
-  it("user can swap token Alpha for Beta after owner provides liquidity", async function () {
+  it("with 10,000 token liquidity, a 1000 token swap produces slippage of ~9%", async function () {
     // owner approves router to spend tokens
     await alpha.connect(owner).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
     await beta.connect(owner).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
@@ -149,5 +149,13 @@ describe("Uniswap v2", function () {
     expect(await alpha.balanceOf(user.address)).to.eq(utils.parseEther("0"));
     expect(await beta.balanceOf(user.address)).to.eq(BigNumber.from("906610893880149131581"));
     expect(utils.formatEther(await beta.balanceOf(user.address))).to.eq("906.610893880149131581");
+
+    // slippage = (1000 - 906.61) / 1000
+    const slippage = (utils.parseEther("1000").sub(BigNumber.from("906610893880149131581")))
+      .mul(BigNumber.from("100"))
+      .div(utils.parseEther("1000"));
+    
+    // note: not completely accurate due to rounding errors
+    expect(slippage.toNumber()).to.eq(9);
   });
 });
