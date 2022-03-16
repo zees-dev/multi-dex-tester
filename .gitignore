@@ -1,0 +1,17 @@
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+
+# Deps
+node_modules
+.env
+coverage
+coverage.json
+typechain
+
+#Hardhat files
+cache
+artifacts
