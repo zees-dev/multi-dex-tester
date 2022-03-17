@@ -2,9 +2,7 @@
 
 A simple project which can be used to create tests for Decentralised Exchanges (primarily Uniswap v2 based) and calculate values such as LP tokens retrieved and slippage incurred via DEX token swaps.
 
-Tests for the following exchanges demonstrate
-
-Supported exchanges:
+Tests (slippage) for the following exchanges have been provided:
 
 - [Uniswap v2](./test/Uniswapv2.test.ts)
 - [Solidly](./test/Solidly.test.ts)
