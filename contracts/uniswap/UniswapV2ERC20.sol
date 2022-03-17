@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.12;
 
 import "./interfaces/IUniswapV2ERC20.sol";
 import "./libraries/SafeMath.sol";

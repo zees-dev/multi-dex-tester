@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.12;
 
 interface IUniswapV2ERC20 {
   event Approval(address indexed owner, address indexed spender, uint256 value);

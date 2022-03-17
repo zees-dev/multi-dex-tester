@@ -1,8 +1,7 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.12;
 
 interface IUniswapV2Router01 {
-
   // function factory() external pure returns (address);
   function factory() external view returns (address); // x-UPDATED
 

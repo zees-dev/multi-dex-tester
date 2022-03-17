@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.12;
 
 import "./SafeMath.sol";
 import "../interfaces/IUniswapV2Pair.sol";
@@ -37,8 +37,13 @@ library UniswapV2Library {
   //     )
   //   );
   // }
-  function pairFor(address factory, address tokenA, address tokenB) internal view returns (address pair) { // x-UPDATED
-    pair = IUniswapV2Factory(factory).getPair(tokenA,tokenB);
+  function pairFor(
+    address factory,
+    address tokenA,
+    address tokenB
+  ) internal view returns (address pair) {
+    // x-UPDATED
+    pair = IUniswapV2Factory(factory).getPair(tokenA, tokenB);
   }
 
   // fetches and sorts the reserves for a pair
