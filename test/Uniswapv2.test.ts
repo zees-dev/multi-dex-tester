@@ -102,7 +102,7 @@ describe("Uniswap v2", function () {
     expect(lpBalance).to.eq(BigNumber.from("999999999999999999000"));
   });
 
-  it("with 10,000 token liquidity, a 1000 token swap produces slippage of ~9%", async function () {
+  it("with 10,000 token liquidity, a 1000 token swap produces slippage of ~9.34%", async function () {
     // mint some tokens to user
     await alpha.mint(user.address, utils.parseEther("1000"));
 
