@@ -107,7 +107,6 @@ describe("Solidly", function () {
   it("with 10,000 token liquidity, a 1000 token swap incurs slippage of ~9.1%", async function () {
     // mint some tokens to user
     await alpha.mint(user.address, utils.parseEther("1000"));
-    incurr
 
     // owner approves router to spend tokens
     await alpha.connect(owner).approve(solidlyRouter.address, utils.parseEther("10000000"));
