@@ -30,19 +30,13 @@ describe("Uniswap v2", function () {
     await beta.deployed();
 
     // Set up owner for re-use
-    const [_owner] = await ethers.getSigners();
+    const [_owner, _user] = await ethers.getSigners();
     owner = _owner;
+    user = _user;
 
     // mint some tokens to the owner
     await alpha.mint(owner.address, utils.parseEther("10000000"));
     await beta.mint(owner.address, utils.parseEther("10000000"));
-
-    // mint some tokens to user
-    // eslint-disable-next-line no-unused-vars
-    const [_, _user] = await ethers.getSigners();
-    user = _user;
-    await alpha.mint(user.address, utils.parseEther("1000"));
-    await beta.mint(user.address, utils.parseEther("1000"));
 
     // deploy the UniswapV2Factory
     const UniswapV2FactoryFactory = await ethers.getContractFactory("UniswapV2Factory");
@@ -60,11 +54,6 @@ describe("Uniswap v2", function () {
     expect(await beta.balanceOf(owner.address)).to.eq(utils.parseEther("10000000"));
   });
 
-  it("user should have alpha and beta tokens", async function () {
-    expect(await alpha.balanceOf(user.address)).to.eq(utils.parseEther("1000"));
-    expect(await beta.balanceOf(user.address)).to.eq(utils.parseEther("1000"));
-  });
-
   it("owner should create liquidity pair for Alpha and Beta on Uniswap", async function () {
     await alpha.connect(owner).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
     await beta.connect(owner).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
@@ -80,9 +69,18 @@ describe("Uniswap v2", function () {
       owner.address,
       ethers.constants.MaxUint256
     );
+
+    const pairAddress = await uniswapV2Factory.getPair(alpha.address, beta.address);
+    const lpToken: CustomERC20 = await ethers.getContractAt("CustomERC20", pairAddress);
+    const lpBalance = await lpToken.balanceOf(owner.address);
+    expect(lpBalance).to.eq(BigNumber.from("9999999999999999999000"));
   });
 
   it("user should create liquidity pair for Alpha and Beta on Uniswap", async function () {
+    // mint some tokens to user
+    await alpha.connect(owner).mint(user.address, utils.parseEther("1000"));
+    await beta.connect(owner).mint(user.address, utils.parseEther("1000"));
+
     await alpha.connect(user).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
     await beta.connect(user).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
 
@@ -97,9 +95,17 @@ describe("Uniswap v2", function () {
       user.address,
       ethers.constants.MaxUint256
     );
+
+    const pairAddress = await uniswapV2Factory.getPair(alpha.address, beta.address);
+    const lpToken: CustomERC20 = await ethers.getContractAt("CustomERC20", pairAddress);
+    const lpBalance = await lpToken.balanceOf(user.address);
+    expect(lpBalance).to.eq(BigNumber.from("999999999999999999000"));
   });
 
   it("with 10,000 token liquidity, a 1000 token swap produces slippage of ~9%", async function () {
+    // mint some tokens to user
+    await alpha.mint(user.address, utils.parseEther("1000"));
+
     // owner approves router to spend tokens
     await alpha.connect(owner).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
     await beta.connect(owner).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
@@ -117,9 +123,6 @@ describe("Uniswap v2", function () {
       ethers.constants.MaxUint256
     );
 
-    // burn user Beta tokens (set to 0)
-    await beta.connect(user).burn(utils.parseEther("1000"));
-
     // user approves router to spend tokens
     await alpha.connect(user).approve(uniswapV2Router02.address, utils.parseEther("1000"));
     await beta.connect(user).approve(uniswapV2Router02.address, utils.parseEther("1000"));
@@ -129,7 +132,7 @@ describe("Uniswap v2", function () {
     expect(await beta.balanceOf(user.address)).to.eq(utils.parseEther("0"));
 
     // check amount of tokens retrievable
-    const [ _, betaAmountOut] = await uniswapV2Router02.connect(user).getAmountsOut(
+    const [_, betaAmountOut] = await uniswapV2Router02.connect(user).getAmountsOut(
       utils.parseEther("1000"),
       [alpha.address, beta.address]
     );
@@ -151,11 +154,10 @@ describe("Uniswap v2", function () {
     expect(utils.formatEther(await beta.balanceOf(user.address))).to.eq("906.610893880149131581");
 
     // slippage = (1000 - 906.61) / 1000
-    const slippage = (utils.parseEther("1000").sub(BigNumber.from("906610893880149131581")))
-      .mul(BigNumber.from("100"))
-      .div(utils.parseEther("1000"));
-    
-    // note: not completely accurate due to rounding errors
-    expect(slippage.toNumber()).to.eq(9);
+    const slippageLoss = (utils.parseEther("1000").sub(BigNumber.from("906610893880149131581")));
+    const slippageLossDecimal = +utils.formatEther(slippageLoss);
+    const slippageLossPercent = (slippageLossDecimal / 1000) * 100;
+    expect(slippageLossDecimal).to.be.eq(93.38910611985087);
+    expect(slippageLossPercent.toFixed(3)).to.be.eq("9.339"); // 9.339% lost in slippage
   });
 });
