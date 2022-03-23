@@ -38,8 +38,8 @@ npx hardhat test
 ## TODO
 
 - [ ] Calculate slippage for a range of values
+- [ ] Test stable swaps on Solidly
 - [ ] Plot graphs of slippage values
 - [ ] Integrate [Curve finance](https://curve.fi/), create tests and calculate slippage values for equivalent levels of liquidity
 - [ ] Integrate [Platypus finance](https://platypus.finance/), create tests and calculate slippage values for equivalent levels of liquidity
-- [ ] Test stable swaps on Solidly
   - solidly is supposed to be vastly superior to Uniswap for stable swaps - potentially as competitive as [Curve](https://curve.fi/) or [platypus](https://platypus.finance/)
