@@ -104,6 +104,51 @@ describe("Solidly", function () {
     expect(lpBalance).to.eq(BigNumber.from("999999999999999999000"));
   });
 
+  it("user can remove liquidity", async function () {
+    // mint some tokens to user
+    await alpha.connect(owner).mint(user.address, utils.parseEther("1000"));
+    await beta.connect(owner).mint(user.address, utils.parseEther("1000"));
+
+    await alpha.connect(user).approve(solidlyRouter.address, utils.parseEther("10000000"));
+    await beta.connect(user).approve(solidlyRouter.address, utils.parseEther("10000000"));
+
+    // add liquidity - this also creates pair if non-existent
+    await solidlyRouter.connect(user).addLiquidity(
+      alpha.address,
+      beta.address,
+      false, // stable pair
+      utils.parseEther("1000"),
+      utils.parseEther("1000"),
+      utils.parseEther("1000"),
+      utils.parseEther("1000"),
+      user.address,
+      ethers.constants.MaxUint256
+    );
+
+    const pairAddress = await solidlyFactory.getPair(alpha.address, beta.address, false);
+    const lpToken: CustomERC20 = await ethers.getContractAt("CustomERC20", pairAddress);
+    const lpBalance = await lpToken.balanceOf(user.address);
+    expect(lpBalance).to.eq(BigNumber.from("999999999999999999000"));
+
+    // allow user to send funds to router - this is required to burn LP tokens which removes liquidity
+    await lpToken.connect(user).approve(solidlyRouter.address, utils.parseEther("10000000"));
+
+    // remove liquidity
+    await solidlyRouter.connect(user).removeLiquidity(
+      alpha.address,
+      beta.address,
+      false, // stable pair
+      lpBalance,
+      utils.parseEther("100"),
+      utils.parseEther("100"),
+      user.address,
+      ethers.constants.MaxUint256
+    );
+    expect(await lpToken.balanceOf(user.address)).to.eq(ethers.constants.Zero);
+    expect(ethers.utils.formatEther(await alpha.balanceOf(user.address))).to.eq("999.999999999999999");
+    expect(ethers.utils.formatEther(await beta.balanceOf(user.address))).to.eq("999.999999999999999");
+  });
+
   it("with 10,000 token liquidity, a 1000 token swap incurs slippage of ~9.1%", async function () {
     // mint some tokens to user
     await alpha.mint(user.address, utils.parseEther("1000"));
@@ -149,6 +194,8 @@ describe("Solidly", function () {
       user.address,
       ethers.constants.MaxUint256
     );
+    expect(ethers.utils.formatEther(await alpha.balanceOf(user.address))).to.eq("0.0");
+    expect(ethers.utils.formatEther(await beta.balanceOf(user.address))).to.eq("909.008263711488286257");
 
     // utils.formatEther(await alpha.balanceOf(user.address));
     // verify user token Alpha and Beta balances
@@ -162,5 +209,72 @@ describe("Solidly", function () {
     const slippageLossPercent = (slippageLossDecimal / 1000) * 100;
     expect(slippageLossDecimal).to.be.eq(90.99173628851172);
     expect(slippageLossPercent.toFixed(3)).to.be.eq("9.099"); // 9.099% lost in slippage
+  });
+
+  it("user receives swap fees upon removing liquidity", async function () {
+    // mint some tokens to user
+    await alpha.connect(owner).mint(user.address, utils.parseEther("1000"));
+    await beta.connect(owner).mint(user.address, utils.parseEther("1000"));
+    expect(ethers.utils.formatEther(await alpha.balanceOf(user.address))).to.eq("1000.0");
+    expect(ethers.utils.formatEther(await beta.balanceOf(user.address))).to.eq("1000.0");
+
+    // ERC20 approves user to send tokens to router
+    await alpha.connect(user).approve(solidlyRouter.address, utils.parseEther("10000000"));
+    await beta.connect(user).approve(solidlyRouter.address, utils.parseEther("10000000"));
+
+    // add liquidity - this also creates pair if non-existent
+    await solidlyRouter.connect(user).addLiquidity(
+      alpha.address,
+      beta.address,
+      false, // stable pair
+      utils.parseEther("1000"),
+      utils.parseEther("1000"),
+      utils.parseEther("1000"),
+      utils.parseEther("1000"),
+      user.address,
+      ethers.constants.MaxUint256
+    );
+
+    // new user swaps tokens; mint (via owner) -> approve -> swap
+    const newUser = (await ethers.getSigners())[2];
+    await alpha.connect(owner).mint(newUser.address, utils.parseEther("1000")); // mint tokens to new user
+    await alpha.connect(newUser).approve(solidlyRouter.address, utils.parseEther("10000000")); // approve tokens for new user
+    // const [_, betaAmountOut] = await solidlyRouter.connect(newUser).getAmountsOut(
+    //   utils.parseEther("1000"),
+    //   [{ from: alpha.address, to: beta.address, stable: true }]
+    // );
+    // expect(ethers.utils.formatEther(betaAmountOut)).to.eq("499.248873309964947421");
+    await solidlyRouter.connect(newUser).swapExactTokensForTokens(
+      utils.parseEther("1000"),
+      utils.parseEther("400"),
+      [{ from: alpha.address, to: beta.address, stable: false }],
+      user.address,
+      ethers.constants.MaxUint256
+    );
+    expect(ethers.utils.formatEther(await alpha.balanceOf(newUser.address))).to.eq("0.0");
+    expect(ethers.utils.formatEther(await beta.balanceOf(newUser.address))).to.eq("0.0");
+
+
+    const pairAddress = await solidlyFactory.getPair(alpha.address, beta.address, false);
+    const lpToken: CustomERC20 = await ethers.getContractAt("CustomERC20", pairAddress);
+    const lpBalance = await lpToken.balanceOf(user.address);
+
+    // allow user to send funds to router - this is required to burn LP tokens which removes liquidity
+    await lpToken.connect(user).approve(solidlyRouter.address, utils.parseEther("10000000"));
+
+    // remove liquidity
+    await solidlyRouter.connect(user).removeLiquidity(
+      alpha.address,
+      beta.address,
+      false, // stable pair
+      lpBalance,
+      utils.parseEther("500"),
+      utils.parseEther("500"),
+      user.address,
+      ethers.constants.MaxUint256
+    );
+    expect(await lpToken.balanceOf(user.address)).to.eq(ethers.constants.Zero);
+    expect(ethers.utils.formatEther(await alpha.balanceOf(user.address))).to.eq("1999.899999999999998");
+    expect(ethers.utils.formatEther(await beta.balanceOf(user.address))).to.eq("999.999999999999999499");
   });
 });

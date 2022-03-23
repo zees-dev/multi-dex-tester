@@ -2,7 +2,7 @@ import { expect } from "chai";
 import { BigNumber, utils } from "ethers";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { CustomERC20, WETH9, UniswapV2Factory, UniswapV2Router02 } from "../typechain";
+import { CustomERC20, WETH9, UniswapV2Factory, UniswapV2Pair, UniswapV2Router02 } from "../typechain";
 
 describe("Uniswap v2", function () {
   let owner: SignerWithAddress;
@@ -102,6 +102,49 @@ describe("Uniswap v2", function () {
     expect(lpBalance).to.eq(BigNumber.from("999999999999999999000"));
   });
 
+  it("user can remove liquidity", async function () {
+    // mint some tokens to user
+    await alpha.connect(owner).mint(user.address, utils.parseEther("1000"));
+    await beta.connect(owner).mint(user.address, utils.parseEther("1000"));
+
+    await alpha.connect(user).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
+    await beta.connect(user).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
+
+    // add liquidity - this also creates pair if non-existent
+    await uniswapV2Router02.connect(user).addLiquidity(
+      alpha.address,
+      beta.address,
+      utils.parseEther("1000"),
+      utils.parseEther("1000"),
+      utils.parseEther("1000"),
+      utils.parseEther("1000"),
+      user.address,
+      ethers.constants.MaxUint256
+    );
+
+    const pairAddress = await uniswapV2Factory.getPair(alpha.address, beta.address);
+    const lpToken: CustomERC20 = await ethers.getContractAt("CustomERC20", pairAddress);
+    const lpBalance = await lpToken.balanceOf(user.address);
+    expect(lpBalance).to.eq(BigNumber.from("999999999999999999000"));
+
+    // allow user to send funds to router - this is required to burn LP tokens which removes liquidity
+    await lpToken.connect(user).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
+
+    // remove liquidity
+    await uniswapV2Router02.connect(user).removeLiquidity(
+      alpha.address,
+      beta.address,
+      lpBalance,
+      utils.parseEther("100"),
+      utils.parseEther("100"),
+      user.address,
+      ethers.constants.MaxUint256
+    );
+    expect(await lpToken.balanceOf(user.address)).to.eq(ethers.constants.Zero);
+    expect(ethers.utils.formatEther(await alpha.balanceOf(user.address))).to.eq("999.999999999999999");
+    expect(ethers.utils.formatEther(await beta.balanceOf(user.address))).to.eq("999.999999999999999");
+  });
+
   it("with 10,000 token liquidity, a 1000 token swap produces slippage of ~9.34%", async function () {
     // mint some tokens to user
     await alpha.mint(user.address, utils.parseEther("1000"));
@@ -138,10 +181,10 @@ describe("Uniswap v2", function () {
     );
     expect(betaAmountOut).to.eq(BigNumber.from("906610893880149131581"));
 
-    // swap tokens
+    // get quote and swap tokens
     await uniswapV2Router02.connect(user).swapExactTokensForTokens(
       utils.parseEther("1000"),
-      utils.parseEther("100"),
+      betaAmountOut,
       [alpha.address, beta.address],
       user.address,
       ethers.constants.MaxUint256
@@ -159,5 +202,73 @@ describe("Uniswap v2", function () {
     const slippageLossPercent = (slippageLossDecimal / 1000) * 100;
     expect(slippageLossDecimal).to.be.eq(93.38910611985087);
     expect(slippageLossPercent.toFixed(3)).to.be.eq("9.339"); // 9.339% lost in slippage
+  });
+
+  it("user receives swap fees upon removing liquidity", async function () {
+    // mint some tokens to user
+    await alpha.connect(owner).mint(user.address, utils.parseEther("10000"));
+    await beta.connect(owner).mint(user.address, utils.parseEther("10000"));
+    expect(ethers.utils.formatEther(await alpha.balanceOf(user.address))).to.eq("10000.0");
+    expect(ethers.utils.formatEther(await beta.balanceOf(user.address))).to.eq("10000.0");
+
+    // ERC20 approves user to send tokens to router
+    await alpha.connect(user).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
+    await beta.connect(user).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
+
+    // add liquidity - this also creates pair if non-existent
+    await uniswapV2Router02.connect(user).addLiquidity(
+      alpha.address,
+      beta.address,
+      utils.parseEther("10000"),
+      utils.parseEther("10000"),
+      utils.parseEther("10000"),
+      utils.parseEther("10000"),
+      user.address,
+      ethers.constants.MaxUint256
+    );
+
+    // new user swaps tokens; mint (via owner) -> approve -> swap
+    const newUser = (await ethers.getSigners())[2];
+    await alpha.connect(owner).mint(newUser.address, utils.parseEther("1000")); // mint tokens to new user
+    await alpha.connect(newUser).approve(uniswapV2Router02.address, utils.parseEther("10000000")); // approve tokens for new user
+    const [alphaAmountIn, betaAmountOut] = await uniswapV2Router02.connect(newUser).getAmountsOut(
+      utils.parseEther("1000"),
+      [alpha.address, beta.address],
+    );
+    expect(ethers.utils.formatEther(betaAmountOut)).to.eq("906.610893880149131581");
+    await uniswapV2Router02.connect(newUser).swapExactTokensForTokens(
+      utils.parseEther("1000"),
+      betaAmountOut,
+      [alpha.address, beta.address],
+      user.address,
+      ethers.constants.MaxUint256
+    );
+    expect(await alpha.balanceOf(newUser.address)).to.eq(ethers.constants.Zero);
+    expect(await beta.balanceOf(newUser.address)).to.eq(ethers.constants.Zero);
+
+    const pairAddress = await uniswapV2Factory.getPair(alpha.address, beta.address);
+    const lpToken: UniswapV2Pair = await ethers.getContractAt("UniswapV2Pair", pairAddress);
+    const lpBalance = await lpToken.balanceOf(user.address);
+
+    // allow user to send funds to router - this is required to burn LP tokens which removes liquidity
+    await lpToken.connect(user).approve(uniswapV2Router02.address, utils.parseEther("10000000"));
+
+    const [r0, r1, __] = await lpToken.getReserves();
+    expect(r0).to.eq(utils.parseEther("10000").add(alphaAmountIn));
+    expect(r1).to.eq(utils.parseEther("10000").sub(betaAmountOut));
+
+    // remove liquidity
+    await uniswapV2Router02.connect(user).removeLiquidity(
+      alpha.address,
+      beta.address,
+      lpBalance,
+      r0.sub(utils.parseEther("1")),
+      r1.sub(utils.parseEther("1")),
+      user.address,
+      ethers.constants.MaxUint256
+    );
+    expect(await lpToken.balanceOf(user.address)).to.eq(ethers.constants.Zero);
+    expect(ethers.utils.formatEther(await alpha.balanceOf(user.address))).to.eq("10999.9999999999999989");
+    expect(ethers.utils.formatEther(await beta.balanceOf(user.address))).to.eq("9999.99999999999999909");
   });
 });
